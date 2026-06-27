@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hermes WeCom Plugin</title>
+    <link rel="stylesheet" href="./renderer.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="status-grid" aria-label="runtime status">
+        <article class="status-card" data-key="hermes">
+          <div class="status-dot"></div>
+          <div>
+            <span>Hermes API</span>
+            <strong id="hermesText">检测中</strong>
+          </div>
+        </article>
+        <article class="status-card" data-key="adapter">
+          <div class="status-dot"></div>
+          <div>
+            <span>Gateway Adapter</span>
+            <strong id="adapterText">检测中</strong>
+          </div>
+        </article>
+        <article class="status-card" data-key="cli">
+          <div class="status-dot"></div>
+          <div>
+            <span>CLI 注入器</span>
+            <strong id="cliText">检测中</strong>
+          </div>
+        </article>
+        <article class="status-card" data-key="wxwork">
+          <div class="status-dot"></div>
+          <div>
+            <span>企业微信</span>
+            <strong id="wxworkText">检测中</strong>
+          </div>
+        </article>
+      </section>
+
+      <section class="control-band">
+        <div class="control-copy">
+          <div>
+            <h2>插件开关</h2>
+            <p>控制 WeCom PC Hook adapter 与 CLI 注入器。</p>
+          </div>
+          <div class="reply-policy">
+            <div class="policy-tabs" role="group" aria-label="回复策略">
+              <button class="policy-tab" type="button" data-reply-mode="all">全部回复</button>
+              <button class="policy-tab" type="button" data-reply-mode="wake">唤醒词</button>
+              <button class="policy-tab" type="button" data-reply-mode="off">暂停</button>
+            </div>
+            <input id="wakeWords" class="policy-input" type="text" placeholder="@Hermes,Hermes" />
+            <span id="replyModeHint" class="policy-hint">当前生效：检测中</span>
+          </div>
+        </div>
+        <button class="power-toggle" id="powerToggle" type="button" role="switch" aria-checked="false">
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-copy">
+            <strong id="powerText">已关闭</strong>
+            <em>启动 / 停止</em>
+          </span>
+        </button>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel">
+          <div class="panel-title">
+            <h2>模块</h2>
+          </div>
+          <div class="module-list">
+            <div class="module-row">
+              <div class="module-icon adapter-icon">
+                <img id="adapterIcon" alt="" />
+              </div>
+              <div>
+                <strong>WeCom PC Hook Adapter</strong>
+                <span data-module-text="adapter">随 Hermes gateway 运行，接收 CLI hook 后进入 Hermes Agent 会话</span>
+              </div>
+              <div class="module-controls builtin">
+                  <input id="adapterPath" class="path-input" type="text" readonly />
+              </div>
+            </div>
+            <div class="module-row">
+              <div class="module-icon cli-icon">
+                <img id="cliIcon" alt="" />
+              </div>
+              <div>
+                <strong>cli.exe</strong>
+                <span data-module-text="cli">注入企业微信，轮询 adapter 下行队列</span>
+              </div>
+              <div class="module-controls builtin">
+                <input id="cliPath" class="path-input" type="text" readonly />
+              </div>
+            </div>
+            <div class="module-row">
+              <div class="module-icon brand-icon hermes-icon">
+                <img id="hermesIcon" src="./assets/hermes.png" alt="" />
+              </div>
+              <div>
+                <strong>Hermes</strong>
+                <span id="hermesModuleText">Gateway API，插件回复依赖它</span>
+              </div>
+              <div class="module-controls external">
+                <div class="module-switch-line">
+                  <button class="mini-toggle" id="hermesToggle" type="button" role="switch" aria-checked="false">
+                    <span class="mini-toggle-track"><span></span></span>
+                    <em id="hermesToggleText">已关闭</em>
+                  </button>
+                </div>
+                <div class="path-line">
+                  <input id="hermesBaseUrl" class="path-input" type="text" placeholder="http://127.0.0.1:8642/v1" />
+                </div>
+              </div>
+            </div>
+            <div class="module-row">
+              <div class="module-icon brand-icon wecom-icon">
+                <img id="wxworkIcon" src="./assets/wecom.png" alt="" />
+              </div>
+              <div>
+                <strong>企业微信</strong>
+                <span id="wxworkModuleText">企业微信客户端，需要登录后 CLI 才能注入</span>
+              </div>
+              <div class="module-controls external">
+                <div class="module-switch-line">
+                  <button class="mini warning-action" id="freezeWxwork" type="button">冻结更新</button>
+                  <button class="mini-toggle" id="wxworkToggle" type="button" role="switch" aria-checked="false">
+                    <span class="mini-toggle-track"><span></span></span>
+                    <em id="wxworkToggleText">已关闭</em>
+                  </button>
+                </div>
+                <div class="path-line">
+                  <input id="wxworkPath" class="path-input" type="text" placeholder="选择 WXWork.exe 路径" />
+                  <button class="mini" data-browse="wxworkPath">浏览</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-title">
+            <h2>运行日志</h2>
+            <span>最近事件</span>
+          </div>
+          <div id="logList" class="log-list"></div>
+        </article>
+      </section>
+
+      <section class="policy-panel">
+        <div class="panel-title">
+          <h2>策略</h2>
+          <span id="policyStatus">检测中</span>
+        </div>
+        <div class="policy-grid">
+          <label class="policy-switch">
+            <input id="allowAllUsers" type="checkbox" />
+            <span></span>
+            <strong>免审批</strong>
+            <em>默认允许企业微信发送者进入 Hermes 会话</em>
+          </label>
+          <div class="policy-field">
+            <strong>工具策略</strong>
+            <select id="toolPolicyMode" class="path-input">
+              <option value="native">原生</option>
+              <option value="chat">只聊天</option>
+              <option value="custom">自定义禁用</option>
+            </select>
+            <input id="disabledToolsets" class="path-input" type="text" placeholder="terminal,browser,file" />
+          </div>
+          <div class="policy-actions">
+            <button class="mini primary-action" id="savePolicy" type="button">保存策略</button>
+            <button class="mini" id="openSoul" type="button">打开人设文件</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

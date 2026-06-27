@@ -1,0 +1,96 @@
+{
+  "name": "hermes-wecom-plugin",
+  "version": "1.0.0",
+  "description": "Hermes WeCom PC Hook desktop control console.",
+  "author": {
+    "name": "Hermes"
+  },
+  "main": "electron/main.js",
+  "scripts": {
+    "electron": "electron electron/main.js",
+    "start": "electron electron/main.js",
+    "package": "npm run package:installer",
+    "package:installer": "electron-builder --win nsis",
+    "package:portable": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./package-electron.ps1",
+    "package:electron": "npm run package:portable"
+  },
+  "build": {
+    "appId": "com.hermes.wecom-plugin",
+    "productName": "Hermes WeCom Plugin",
+    "copyright": "Copyright © 2026 Hermes",
+    "asar": true,
+    "directories": {
+      "output": "dist/nsis"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraFiles": [
+      {
+        "from": ".",
+        "to": ".",
+        "filter": [
+          "cli.exe",
+          "loader.dll",
+          "helper.dll",
+          "bot.ini",
+          "README.md",
+          "libbrotlicommon.dll",
+          "libbrotlidec.dll",
+          "libcares-2.dll",
+          "libcrypto-3.dll",
+          "libcurl-4.dll",
+          "libgcc_s_dw2-1.dll",
+          "libiconv-2.dll",
+          "libidn2-0.dll",
+          "libintl-8.dll",
+          "libnghttp2-14.dll",
+          "libnghttp3-9.dll",
+          "libngtcp2_crypto_ossl-0.dll",
+          "libngtcp2-16.dll",
+          "libpsl-5.dll",
+          "libssh2-1.dll",
+          "libssl-3.dll",
+          "libunistring-5.dll",
+          "libwinpthread-1.dll",
+          "libzstd.dll",
+          "zlib1.dll",
+          "hermes_plugins/**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/assets/hermes-256.png",
+      "executableName": "HermesPlugin",
+      "artifactName": "HermesPluginSetup-${version}.${ext}",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hermes WeCom Plugin",
+      "menuCategory": "Hermes WeCom Plugin",
+      "uninstallDisplayName": "Hermes WeCom Plugin",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@electron/packager": "^18.4.4",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.15.3"
+  }
+}

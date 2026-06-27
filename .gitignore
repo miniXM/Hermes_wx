@@ -1,0 +1,22 @@
+.git/
+
+# Node / Electron build output
+**/node_modules/
+**/dist/
+**/out/
+**/release/
+**/.electron-builder/
+
+# Logs and runtime artifacts
+**/logs/
+*.log
+*.tmp
+
+# Python cache
+**/__pycache__/
+*.pyc
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+Desktop.ini

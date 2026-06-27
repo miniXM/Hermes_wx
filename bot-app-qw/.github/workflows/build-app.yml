@@ -1,0 +1,62 @@
+name: Build cli.exe
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install MSYS2 and dependencies
+        uses: msys2/setup-msys2@v2
+        with:
+          release: true
+          update: true
+          msystem: MINGW32
+          install: >-
+            mingw-w64-i686-gcc
+            mingw-w64-i686-curl
+
+      - name: Build cli.exe with MinGW (32-bit)
+        shell: msys2 {0}
+        run: |
+          gcc  -mconsole wxwork-cli.c -o cli.exe -lcurl -lws2_32
+
+      - name: Collect cli.exe
+        shell: msys2 {0}
+        run: |
+          mkdir -p qwbot
+          cp cli.exe qwbot/
+
+      - name: Upload cli.exe as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwbot
+          path: qwbot/
+
+      - name: Checkout bot-collect repository
+        uses: actions/checkout@v4
+        with:
+          repository: tans/bot-collect
+          token: ${{ secrets.SUPERPAT }}
+          path: bot-collect
+
+      - name: Copy cli.exe to bot-collect
+        run: |
+          Copy-Item -Path qwbot -Destination bot-collect -Recurse -Force
+
+      - name: Commit and push cli.exe to bot-collect
+        run: |
+          cd bot-collect
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Update cli.exe from workflow" || echo "No changes to commit"
+          git remote set-url origin https://x-access-token:${{ secrets.SUPERPAT }}@github.com/tans/bot-collect.git
+          git push origin HEAD:main

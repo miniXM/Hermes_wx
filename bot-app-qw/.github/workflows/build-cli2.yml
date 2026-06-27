@@ -1,0 +1,28 @@
+name: build-cli2
+
+on:
+  push:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/**"
+      - ".github/workflows/build-cli2.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        run: rustup target add i686-pc-windows-msvc
+
+      - name: Build cli2.exe (32-bit)
+        run: cargo build --release --target i686-pc-windows-msvc
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli2-windows-ia32
+          path: target/i686-pc-windows-msvc/release/cli2.exe

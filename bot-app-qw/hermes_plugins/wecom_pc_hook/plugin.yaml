@@ -1,0 +1,62 @@
+name: wecom_pc_hook
+label: WeCom PC Hook
+kind: platform
+version: 0.1.0
+description: >
+  Hermes gateway platform adapter for the local Enterprise WeChat PC DLL hook.
+  It exposes a loopback HTTP hook for cli.exe and routes inbound messages through
+  Hermes Gateway Runner/AIAgent instead of the OpenAI-compatible chat API.
+author: local
+optional_env:
+  - name: WECOM_PC_HOOK_TOKEN
+    description: "Shared token for the local cli.exe hook endpoint"
+    prompt: "WeCom PC hook token"
+    password: true
+  - name: WECOM_PC_HOOK_HOST
+    description: "Loopback host for the local hook server"
+    prompt: "WeCom PC hook host"
+    password: false
+  - name: WECOM_PC_HOOK_PORT
+    description: "Loopback port for the local hook server"
+    prompt: "WeCom PC hook port"
+    password: false
+  - name: WECOM_PC_HOOK_REPLY_MODE
+    description: "Reply mode: all, wake, or off"
+    prompt: "Reply mode"
+    password: false
+  - name: WECOM_PC_HOOK_WAKE_WORDS
+    description: "Comma-separated wake words"
+    prompt: "Wake words"
+    password: false
+  - name: WECOM_PC_HOOK_ALLOW_ALL_USERS
+    description: "Allow all WeCom sender IDs"
+    prompt: "Allow all users"
+    password: false
+  - name: WECOM_PC_HOOK_HOME_CHANNEL
+    description: "Default WeCom conversation_id used by Hermes send_message and cron delivery"
+    prompt: "Home conversation ID"
+    password: false
+  - name: WECOM_PC_HOOK_HOME_CHANNEL_NAME
+    description: "Display name for the default WeCom conversation"
+    prompt: "Home conversation name"
+    password: false
+  - name: WECOM_PC_HOOK_HOME_CHANNEL_THREAD_ID
+    description: "Optional thread ID for the default WeCom conversation"
+    prompt: "Home thread ID"
+    password: false
+  - name: WECOM_PC_HOOK_MEDIA_TEMPLATE
+    description: "Optional JSON template for outbound media payloads. Supports {type}, {conversation_id}, {file_path}, {media_kind}, {file_name} placeholders."
+    prompt: "Media payload template"
+    password: false
+  - name: WECOM_PC_HOOK_SEND_IMAGE_TYPE
+    description: "WXWork hook message type used for outbound images"
+    prompt: "Send image type"
+    password: false
+  - name: WECOM_PC_HOOK_SEND_FILE_TYPE
+    description: "WXWork hook message type used for outbound files"
+    prompt: "Send file type"
+    password: false
+  - name: WECOM_PC_HOOK_SEND_VIDEO_TYPE
+    description: "WXWork hook message type used for outbound videos"
+    prompt: "Send video type"
+    password: false

@@ -1,0 +1,15 @@
+node_modules
+*.lock
+!Cargo.lock
+target
+.tools/
+hook*.log
+*.out.log
+*.err.log
+zig-cli.exe
+zig-cli.pdb
+cli.exe
+lib*.dll
+zlib1.dll
+WeCom_*.exe
+dist/
