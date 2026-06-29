@@ -26,6 +26,9 @@ const replyModeButtons = document.querySelectorAll("[data-reply-mode]");
 const wakeWords = document.getElementById("wakeWords");
 const replyModeHint = document.getElementById("replyModeHint");
 const allowAllUsers = document.getElementById("allowAllUsers");
+const startupSelfHealEnabled = document.getElementById("startupSelfHealEnabled");
+const residentSelfHealEnabled = document.getElementById("residentSelfHealEnabled");
+const autoStartPlugin = document.getElementById("autoStartPlugin");
 const toolPolicyMode = document.getElementById("toolPolicyMode");
 const disabledToolsets = document.getElementById("disabledToolsets");
 const savePolicyButton = document.getElementById("savePolicy");
@@ -72,6 +75,29 @@ const chatOnlyDisabledToolsets = [
   "image_gen",
   "video_gen",
   "vision",
+  "video",
+  "tts",
+  "x_search",
+].join(",");
+
+const docsOnlyDisabledToolsets = [
+  "terminal",
+  "web",
+  "browser",
+  "browser-cdp",
+  "computer_use",
+  "code_execution",
+  "cronjob",
+  "delegation",
+  "moa",
+  "session_search",
+  "skills",
+  "memory",
+  "todo",
+  "kanban",
+  "messaging",
+  "image_gen",
+  "video_gen",
   "video",
   "tts",
   "x_search",
@@ -195,6 +221,15 @@ const setAllBusy = (nextBusy) => {
   if (allowAllUsers) {
     allowAllUsers.disabled = nextBusy || strategyBusy;
   }
+  if (startupSelfHealEnabled) {
+    startupSelfHealEnabled.disabled = nextBusy || strategyBusy;
+  }
+  if (residentSelfHealEnabled) {
+    residentSelfHealEnabled.disabled = nextBusy || strategyBusy;
+  }
+  if (autoStartPlugin) {
+    autoStartPlugin.disabled = nextBusy || strategyBusy;
+  }
   if (toolPolicyMode) {
     toolPolicyMode.disabled = nextBusy || strategyBusy;
   }
@@ -204,7 +239,7 @@ const setAllBusy = (nextBusy) => {
 };
 
 const renderToolPolicyInputs = (mode, savedDisabled = "") => {
-  const nextMode = ["native", "chat", "custom"].includes(mode) ? mode : "native";
+  const nextMode = ["native", "chat", "docs", "custom"].includes(mode) ? mode : "native";
   if (toolPolicyMode) {
     toolPolicyMode.value = nextMode;
   }
@@ -213,6 +248,9 @@ const renderToolPolicyInputs = (mode, savedDisabled = "") => {
   }
   if (nextMode === "chat") {
     disabledToolsets.value = chatOnlyDisabledToolsets;
+    disabledToolsets.disabled = true;
+  } else if (nextMode === "docs") {
+    disabledToolsets.value = docsOnlyDisabledToolsets;
     disabledToolsets.disabled = true;
   } else if (nextMode === "native") {
     disabledToolsets.value = "";
@@ -325,6 +363,15 @@ const renderStatus = (status) => {
   if (!strategyDirty && allowAllUsers) {
     allowAllUsers.checked = status.policy?.allowAllUsers !== false;
   }
+  if (!strategyDirty && startupSelfHealEnabled) {
+    startupSelfHealEnabled.checked = status.policy?.startupSelfHealEnabled !== false;
+  }
+  if (!strategyDirty && residentSelfHealEnabled) {
+    residentSelfHealEnabled.checked = status.policy?.residentSelfHealEnabled !== false;
+  }
+  if (!strategyDirty && autoStartPlugin) {
+    autoStartPlugin.checked = status.policy?.autoStartPlugin === true;
+  }
   if (!strategyDirty) {
     renderToolPolicyInputs(status.policy?.toolPolicyMode || "native", status.policy?.disabledToolsets || "");
   }
@@ -332,16 +379,17 @@ const renderStatus = (status) => {
     const runtime = status.policy?.runtimeAllowAllUsers;
     const saved = status.policy?.allowAllUsers !== false;
     if (runtime === null || runtime === undefined) {
-      policyStatus.textContent = `已保存：${saved ? "免审批开启" : "需要审批"}`;
+      policyStatus.textContent = `已保存：${saved ? "免审批开启（企微放行 + 危险命令免审批）" : "需要审批"}`;
     } else if (runtime !== saved) {
-      policyStatus.textContent = `运行中：${runtime ? "免审批开启" : "需要审批"}，保存值：${saved ? "免审批开启" : "需要审批"}`;
+      policyStatus.textContent = `运行中：${runtime ? "免审批开启" : "需要审批"}，保存值：${saved ? "免审批开启（企微放行 + 危险命令免审批）" : "需要审批"}`;
     } else {
       const modeLabel = {
         native: "原生",
         chat: "只聊天",
+        docs: "文档助手",
         custom: "自定义",
       }[status.policy?.toolPolicyMode || "native"];
-      policyStatus.textContent = `${saved ? "免审批开启" : "需要审批"}｜工具策略：${modeLabel}`;
+      policyStatus.textContent = `${saved ? "免审批开启（企微放行 + 危险命令免审批）" : "需要审批"}｜工具策略：${modeLabel}｜启动自检${status.policy?.startupSelfHealEnabled !== false ? "开" : "关"}｜常驻自愈${status.policy?.residentSelfHealEnabled !== false ? "开" : "关"}｜开机自启动${status.policy?.autoStartPlugin === true ? "开" : "关"}`;
     }
   }
 };
@@ -379,6 +427,15 @@ const saveStrategyPolicy = async () => {
   if (allowAllUsers) {
     allowAllUsers.disabled = true;
   }
+  if (startupSelfHealEnabled) {
+    startupSelfHealEnabled.disabled = true;
+  }
+  if (residentSelfHealEnabled) {
+    residentSelfHealEnabled.disabled = true;
+  }
+  if (autoStartPlugin) {
+    autoStartPlugin.disabled = true;
+  }
   if (disabledToolsets) {
     disabledToolsets.disabled = true;
   }
@@ -391,11 +448,18 @@ const saveStrategyPolicy = async () => {
       replyMode: currentReplyMode,
       wakeWords: wakeWords.value.trim() || "@Hermes,Hermes",
       allowAllUsers: allowAllUsers?.checked !== false,
+      startupSelfHealEnabled: startupSelfHealEnabled?.checked !== false,
+      residentSelfHealEnabled: residentSelfHealEnabled?.checked !== false,
+      autoStartPlugin: autoStartPlugin?.checked === true,
       toolPolicyMode: toolPolicyMode?.value || "native",
       disabledToolsets: disabledToolsets?.value.trim() || "",
     });
     strategyDirty = false;
-    addLog(result.applied ? "策略已保存并同步到运行中 adapter。" : "策略已保存，启动后会生效。");
+    addLog(
+      result.applied
+        ? "策略已保存：企微放行与 Hermes 危险命令免审批已同步。"
+        : "策略已保存，启动后会生效。",
+    );
     await refresh();
   } catch (error) {
     addLog(`策略保存失败：${error.message || error}`);
@@ -410,6 +474,15 @@ const saveStrategyPolicy = async () => {
     }
     if (allowAllUsers) {
       allowAllUsers.disabled = busy;
+    }
+    if (startupSelfHealEnabled) {
+      startupSelfHealEnabled.disabled = busy;
+    }
+    if (residentSelfHealEnabled) {
+      residentSelfHealEnabled.disabled = busy;
+    }
+    if (autoStartPlugin) {
+      autoStartPlugin.disabled = busy;
     }
     if (toolPolicyMode) {
       toolPolicyMode.disabled = busy;
@@ -569,6 +642,21 @@ disabledToolsets?.addEventListener("input", () => {
 });
 
 allowAllUsers?.addEventListener("change", () => {
+  strategyDirty = true;
+  policyStatus.textContent = "策略已修改，待保存";
+});
+
+startupSelfHealEnabled?.addEventListener("change", () => {
+  strategyDirty = true;
+  policyStatus.textContent = "策略已修改，待保存";
+});
+
+residentSelfHealEnabled?.addEventListener("change", () => {
+  strategyDirty = true;
+  policyStatus.textContent = "策略已修改，待保存";
+});
+
+autoStartPlugin?.addEventListener("change", () => {
   strategyDirty = true;
   policyStatus.textContent = "策略已修改，待保存";
 });

@@ -162,13 +162,34 @@
             <input id="allowAllUsers" type="checkbox" />
             <span></span>
             <strong>免审批</strong>
-            <em>默认允许企业微信发送者进入 Hermes 会话</em>
+            <em>允许企微发送者直接进入会话，并关闭 Hermes 危险命令审批</em>
           </label>
+          <div class="policy-stack">
+            <label class="policy-switch">
+              <input id="startupSelfHealEnabled" type="checkbox" />
+              <span></span>
+              <strong>启动自检自愈</strong>
+              <em>打开 GUI 后做一次注入自检，12 秒无心跳则自动全链路修复</em>
+            </label>
+            <label class="policy-switch">
+              <input id="residentSelfHealEnabled" type="checkbox" />
+              <span></span>
+              <strong>常驻巡检自愈</strong>
+              <em>运行中持续观察 CONNECTED 与 last_poll_at，超时自动拉起整条链路</em>
+            </label>
+            <label class="policy-switch">
+              <input id="autoStartPlugin" type="checkbox" />
+              <span></span>
+              <strong>开机自启动插件</strong>
+              <em>登录 Windows 后自动打开本 GUI，并尝试拉起插件链路</em>
+            </label>
+          </div>
           <div class="policy-field">
             <strong>工具策略</strong>
             <select id="toolPolicyMode" class="path-input">
               <option value="native">原生</option>
               <option value="chat">只聊天</option>
+              <option value="docs">文档助手</option>
               <option value="custom">自定义禁用</option>
             </select>
             <input id="disabledToolsets" class="path-input" type="text" placeholder="terminal,browser,file" />

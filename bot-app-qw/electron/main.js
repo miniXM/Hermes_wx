@@ -48,11 +48,36 @@ const CHAT_ONLY_DISABLED_TOOLSETS = [
   "tts",
   "x_search",
 ];
+const DOC_ASSIST_DISABLED_TOOLSETS = [
+  "terminal",
+  "web",
+  "browser",
+  "browser-cdp",
+  "computer_use",
+  "code_execution",
+  "cronjob",
+  "delegation",
+  "moa",
+  "session_search",
+  "skills",
+  "memory",
+  "todo",
+  "kanban",
+  "messaging",
+  "image_gen",
+  "video_gen",
+  "video",
+  "tts",
+  "x_search",
+];
 const WXWORK_TESTED_VERSION = "4.1.33.6009";
 const WXWORK_INSTALL_ROOTS = [
   "C:\\Program Files (x86)\\WXWork",
   "C:\\Program Files\\WXWork",
 ];
+const SELF_HEAL_STALE_MS = 12000;
+const RESIDENT_SELF_HEAL_POLL_MS = 5000;
+const SELF_HEAL_COOLDOWN_MS = 45000;
 
 let mainWindow = null;
 let cliProcess = null;
@@ -63,10 +88,15 @@ const iconCache = new Map();
 const fileVersionCache = new Map();
 let elevatedCache = null;
 let cliLogTailTimer = null;
+let residentSelfHealTimer = null;
 let cliLogTailPath = "";
 let cliLogTailOffset = 0;
 let cliLogCarry = "";
 let lastChatLogKey = "";
+let startupSelfHealStarted = false;
+let startupSelfHealPromise = null;
+let residentSelfHealRunning = false;
+let residentSelfHealLastAt = 0;
 let cliRuntime = {
   logPath: "",
   connectedAt: 0,
@@ -124,6 +154,9 @@ const defaultConfig = () => ({
   allowAllUsers: true,
   toolPolicyMode: "native",
   disabledToolsets: DEFAULT_DISABLED_TOOLSETS,
+  startupSelfHealEnabled: true,
+  residentSelfHealEnabled: true,
+  autoStartPlugin: false,
 });
 
 const parseCsvList = (value) =>
@@ -135,12 +168,15 @@ const parseCsvList = (value) =>
 const normalizeCsvList = (value) => parseCsvList(value).join(",");
 
 const normalizeToolPolicyMode = (value) =>
-  ["native", "chat", "custom"].includes(value) ? value : "native";
+  ["native", "chat", "docs", "custom"].includes(value) ? value : "native";
 
 const disabledToolsetsForMode = (mode, customValue = "") => {
   const normalizedMode = normalizeToolPolicyMode(mode);
   if (normalizedMode === "chat") {
     return CHAT_ONLY_DISABLED_TOOLSETS.join(",");
+  }
+  if (normalizedMode === "docs") {
+    return DOC_ASSIST_DISABLED_TOOLSETS.join(",");
   }
   if (normalizedMode === "custom") {
     return normalizeCsvList(customValue);
@@ -163,7 +199,38 @@ const normalizeConfig = (config) => {
     allowAllUsers: config.allowAllUsers !== false,
     toolPolicyMode,
     disabledToolsets: disabledToolsetsForMode(toolPolicyMode, config.disabledToolsets),
+    startupSelfHealEnabled: config.startupSelfHealEnabled !== false,
+    residentSelfHealEnabled: config.residentSelfHealEnabled !== false,
+    autoStartPlugin: config.autoStartPlugin === true,
   };
+};
+
+const syncLoginItemSettings = (config) => {
+  try {
+    if (typeof app.setLoginItemSettings !== "function") {
+      return;
+    }
+    app.setLoginItemSettings({
+      openAtLogin: config.autoStartPlugin === true,
+      openAsHidden: false,
+      path: process.execPath,
+      args: app.isPackaged ? [] : [],
+    });
+  } catch (error) {
+    emitLog(`设置开机自启动失败：${error.message || error}`);
+  }
+};
+
+const getLoginItemEnabled = () => {
+  try {
+    if (typeof app.getLoginItemSettings !== "function") {
+      return false;
+    }
+    const settings = app.getLoginItemSettings();
+    return Boolean(settings.openAtLogin);
+  } catch {
+    return false;
+  }
 };
 
 function firstExistingPath(candidates) {
@@ -201,6 +268,7 @@ const saveConfig = (nextConfig) => {
   const merged = normalizeConfig({ ...loadConfig(), ...nextConfig });
   fs.mkdirSync(path.dirname(getConfigPath()), { recursive: true });
   fs.writeFileSync(getConfigPath(), JSON.stringify(merged, null, 2), "utf8");
+  syncLoginItemSettings(merged);
   emitLog("Configuration saved.");
   return merged;
 };
@@ -288,6 +356,8 @@ extra.update(
         "allow_all_users": bool(payload.get("allowAllUsers", True)),
     }
 )
+approvals = cfg.setdefault("approvals", {})
+approvals["mode"] = "off" if bool(payload.get("allowAllUsers", True)) else "manual"
 agent = cfg.setdefault("agent", {})
 disabled_toolsets = payload.get("disabledToolsets") or []
 if isinstance(disabled_toolsets, str):
@@ -1134,6 +1204,42 @@ const waitForCliHealthy = async (timeoutMs) => {
   return false;
 };
 
+const snapshotCliHeartbeat = () => ({
+  connectedAt: cliRuntime.connectedAt || 0,
+  injectAt: cliRuntime.injectAt || 0,
+  pollErrorAt: cliRuntime.pollErrorAt || 0,
+});
+
+const adapterPollFreshSince = (adapterHealth, sinceMs) => {
+  const pollAt = Number(adapterHealth?.last_poll_at || 0);
+  if (!pollAt) {
+    return false;
+  }
+  return pollAt * 1000 >= sinceMs;
+};
+
+const waitForFreshCliHeartbeat = async (sinceMs, timeoutMs) => {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    pollCliChatLog();
+    const adapterHealth = await getAdapterHealth(1200);
+    if (cliRuntime.connectedAt > sinceMs || cliRuntime.injectAt > sinceMs || adapterPollFreshSince(adapterHealth, sinceMs)) {
+      return { ok: true, adapterHealth };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return { ok: false, adapterHealth: await getAdapterHealth(1200) };
+};
+
+const lastCliHeartbeatAt = (adapterHealth = null) => {
+  const adapterPollAt = Number(adapterHealth?.last_poll_at || 0) * 1000;
+  return Math.max(
+    adapterPollAt || 0,
+    Number(cliRuntime.connectedAt || 0),
+    Number(cliRuntime.injectAt || 0),
+  );
+};
+
 const pidListeningOnPort = (port) =>
   new Promise((resolve) => {
     execFile(
@@ -1312,7 +1418,7 @@ const applyPolicyConfig = async (payload = {}) => {
   }
 
   emitLog(
-    `策略已保存：免审批${config.allowAllUsers ? "开启" : "关闭"}，禁用工具集 ${config.disabledToolsets || "无"}`,
+    `策略已保存：免审批${config.allowAllUsers ? "开启" : "关闭"}（企微放行 + Hermes危险命令审批${config.allowAllUsers ? "关闭" : "开启"}），禁用工具集 ${config.disabledToolsets || "无"}，启动自检${config.startupSelfHealEnabled ? "开启" : "关闭"}，常驻自愈${config.residentSelfHealEnabled ? "开启" : "关闭"}，开机自启动${config.autoStartPlugin ? "开启" : "关闭"}`,
   );
   return {
     applied,
@@ -1485,6 +1591,10 @@ const getStatus = async () => {
       runtimeAllowAllUsers: adapterHealth?.allow_all_users ?? null,
       toolPolicyMode: config.toolPolicyMode || "native",
       disabledToolsets: config.disabledToolsets || "",
+      startupSelfHealEnabled: config.startupSelfHealEnabled !== false,
+      residentSelfHealEnabled: config.residentSelfHealEnabled !== false,
+      autoStartPlugin: config.autoStartPlugin === true,
+      loginItemEnabled: getLoginItemEnabled(),
       soulPath: hermesSoulPath(),
     },
   };
@@ -1601,6 +1711,176 @@ const stopHermes = async () => {
   hermesStartedByPlugin = false;
   emitLog(stopped ? `Stopped ${stopped} Hermes process(es).` : "Hermes is not running.");
   return getStatus();
+};
+
+const runFullChainSelfHeal = async (reason = "startup") => {
+  const config = loadConfig();
+  emitLog(`开始全链路自愈：${reason}`);
+  try {
+    await stopPlugin();
+  } catch (error) {
+    emitLog(`停止 CLI 失败：${error.message || error}`);
+  }
+  try {
+    await stopWxWork();
+  } catch (error) {
+    emitLog(`停止企业微信失败：${error.message || error}`);
+  }
+  try {
+    await stopHermes();
+  } catch (error) {
+    emitLog(`停止 Hermes 失败：${error.message || error}`);
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+
+  try {
+    await startWxWork();
+  } catch (error) {
+    emitLog(`启动企业微信失败：${error.message || error}`);
+    throw error;
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 3500));
+
+  try {
+    await startHermes(config, { forceRestart: true });
+  } catch (error) {
+    emitLog(`启动 Hermes 失败：${error.message || error}`);
+    throw error;
+  }
+
+  try {
+    const status = await startPlugin();
+    emitLog(status.cliHealthy ? "全链路自愈成功：CLI 已重新连上 WeCom hook。" : "全链路自愈已执行，但 CLI hook 仍未确认。");
+    return status;
+  } catch (error) {
+    emitLog(`启动插件失败：${error.message || error}`);
+    throw error;
+  }
+};
+
+const shouldResidentSelfHeal = async () => {
+  const config = loadConfig();
+  if (!config.residentSelfHealEnabled) {
+    return false;
+  }
+  if (!pluginDesiredRunning) {
+    return false;
+  }
+  const cliRunning = await isProcessAt("cli.exe", cliExe);
+  const hermesReachable = await canReachHermes(config);
+  const adapterReady = await isAdapterReady();
+  const wxInfo = await getWxWorkInfo(config).catch(() => null);
+  const wxRunning = Boolean(wxInfo?.running?.length);
+  return cliRunning || hermesReachable || adapterReady || wxRunning;
+};
+
+const shouldAttemptStartupSelfHeal = async () => {
+  const config = loadConfig();
+  if (!config.startupSelfHealEnabled) {
+    return false;
+  }
+  let wxInfo = null;
+  try {
+    wxInfo = await getWxWorkInfo(config);
+    assertWxWorkReadyForInjection(wxInfo);
+  } catch {
+    return false;
+  }
+  const cliRunning = await isProcessAt("cli.exe", cliExe);
+  const hermesReachable = await canReachHermes(config);
+  const adapterReady = await isAdapterReady();
+  const wxRunning = wxInfo.running.length > 0;
+  return cliRunning || hermesReachable || adapterReady || wxRunning || pluginDesiredRunning;
+};
+
+const runStartupInjectionSelfCheck = async () => {
+  if (startupSelfHealStarted) {
+    return startupSelfHealPromise;
+  }
+  startupSelfHealStarted = true;
+  startupSelfHealPromise = (async () => {
+    if (!(await shouldAttemptStartupSelfHeal())) {
+      emitLog("启动自检跳过：未检测到现有 Hermes/CLI/企业微信链路。");
+      return null;
+    }
+    emitLog("启动自检：正在检查 WeCom 注入链路...");
+    const before = snapshotCliHeartbeat();
+    const sinceMs = Date.now();
+    const result = await waitForFreshCliHeartbeat(sinceMs, SELF_HEAL_STALE_MS);
+    const heartbeatSeen =
+      result.ok ||
+      cliRuntime.connectedAt > before.connectedAt ||
+      cliRuntime.injectAt > before.injectAt ||
+      adapterPollFreshSince(result.adapterHealth, sinceMs);
+    if (heartbeatSeen) {
+      emitLog("启动自检通过：检测到 CONNECTED 或 CLI 轮询心跳。");
+      return getStatus();
+    }
+    emitLog("启动自检失败：12 秒内未检测到 CONNECTED 或 CLI 轮询心跳，开始自动自愈。");
+    return runFullChainSelfHeal("startup self-check failed");
+  })().catch((error) => {
+    emitLog(`启动自检/自愈失败：${error.message || error}`);
+    return null;
+  });
+  return startupSelfHealPromise;
+};
+
+const runResidentSelfHealCheck = async () => {
+  if (residentSelfHealRunning) {
+    return null;
+  }
+  if (!(await shouldResidentSelfHeal())) {
+    return null;
+  }
+  const now = Date.now();
+  if (now - residentSelfHealLastAt < SELF_HEAL_COOLDOWN_MS) {
+    return null;
+  }
+  residentSelfHealRunning = true;
+  try {
+    const adapterHealth = await getAdapterHealth(1200);
+    const lastHeartbeat = lastCliHeartbeatAt(adapterHealth);
+    if (!lastHeartbeat || now - lastHeartbeat < SELF_HEAL_STALE_MS) {
+      return null;
+    }
+    residentSelfHealLastAt = now;
+    emitLog("常驻巡检告警：12 秒内未检测到 CONNECTED 或 last_poll_at 更新，开始自动自愈。");
+    return await runFullChainSelfHeal("resident self-check stale heartbeat");
+  } catch (error) {
+    emitLog(`常驻自愈失败：${error.message || error}`);
+    return null;
+  } finally {
+    residentSelfHealRunning = false;
+  }
+};
+
+const ensureResidentSelfHealMonitor = () => {
+  if (residentSelfHealTimer) {
+    clearInterval(residentSelfHealTimer);
+    residentSelfHealTimer = null;
+  }
+  residentSelfHealTimer = setInterval(() => {
+    runResidentSelfHealCheck().catch((error) => {
+      emitLog(`常驻巡检异常：${error.message || error}`);
+    });
+  }, RESIDENT_SELF_HEAL_POLL_MS);
+};
+
+const autoStartPluginOnLaunch = async () => {
+  const config = loadConfig();
+  if (!config.autoStartPlugin) {
+    return null;
+  }
+  pluginDesiredRunning = true;
+  emitLog("已启用开机自启动插件：正在自动拉起链路...");
+  try {
+    return await startPlugin();
+  } catch (error) {
+    emitLog(`开机自启动插件失败：${error.message || error}`);
+    return null;
+  }
 };
 
 const startPlugin = async () => {
@@ -1774,7 +2054,20 @@ const createWindow = () => {
   });
 
   mainWindow.removeMenu();
-  mainWindow.webContents.once("did-finish-load", startCliChatLogTail);
+  mainWindow.webContents.once("did-finish-load", () => {
+    startCliChatLogTail();
+    ensureResidentSelfHealMonitor();
+    setTimeout(() => {
+      autoStartPluginOnLaunch().catch((error) => {
+        emitLog(`自动启动插件任务异常：${error.message || error}`);
+      });
+    }, 900);
+    setTimeout(() => {
+      runStartupInjectionSelfCheck().catch((error) => {
+        emitLog(`启动自检任务异常：${error.message || error}`);
+      });
+    }, 1500);
+  });
   mainWindow.loadFile(path.join(__dirname, "renderer.html"));
 };
 
@@ -1825,6 +2118,10 @@ app.on("window-all-closed", () => {
   if (cliLogTailTimer) {
     clearInterval(cliLogTailTimer);
     cliLogTailTimer = null;
+  }
+  if (residentSelfHealTimer) {
+    clearInterval(residentSelfHealTimer);
+    residentSelfHealTimer = null;
   }
   app.quit();
 });

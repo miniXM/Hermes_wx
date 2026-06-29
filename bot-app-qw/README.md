@@ -63,9 +63,17 @@ cli.exe loader.dll helper.dll "C:\Program Files (x86)\WXWork\WXWork.exe"
 
 GUI 的“策略”区域会同步写入 Hermes 配置，换机器后按同一设置启动即可。
 
-- 免审批默认开启：`wecom_pc_hook.extra.allow_all_users: true`，企业微信发送者默认可直接进入 Hermes 会话，不需要逐个执行 `hermes pairing approve`。
+- 免审批默认开启：会同时写入 `wecom_pc_hook.extra.allow_all_users: true` 和 `approvals.mode: off`。也就是企业微信发送者可直接进入 Hermes 会话，同时关闭 Hermes 的危险命令审批，不再弹 `/approve`。
 - 工具策略：`原生` 不禁用工具；`只聊天` 会禁用文件、终端、浏览器、代码执行、任务、记忆、生成等常见 toolset；`自定义禁用` 可填写逗号分隔的 Hermes toolset 名称，例如 `terminal,browser,file`。GUI 会写入 `agent.disabled_toolsets`，下次启动 Hermes gateway 后生效。
+- 启动自检自愈：打开 GUI 后会做一次注入链路自检；如果 12 秒内没有看到 `CONNECTED`、新的 inject 心跳，或 `/health.last_poll_at` 更新，就会自动执行一次全链路自愈，依次重启 `cli.exe`、企业微信和 Hermes gateway。
+- 常驻巡检自愈：GUI 运行期间会持续观察链路心跳；如果连续 12 秒没有看到 `CONNECTED` 或 `/health.last_poll_at` 更新，就会自动触发全链路自愈。内部带冷却时间，避免短时间反复重启。
+- 开机自启动插件：登录 Windows 后自动打开 GUI，并按当前配置自动尝试拉起插件链路。
 - 人设文件：点击“打开人设文件”会用记事本打开 `%LOCALAPPDATA%\hermes\SOUL.md`。Hermes 会把这个文件作为全局人设/系统风格读取。
+
+说明：
+
+- 上面这些策略开关都需要点击一次“保存策略”才会真正写入配置并生效，不是即点即生效。
+- `启动自检自愈` 和 `常驻巡检自愈` 可以分别独立开关；前者偏启动修复，后者偏运行中守护。
 
 如果需要改回审批模式，在策略区域关闭“免审批”并保存，然后重启 Hermes gateway。
 

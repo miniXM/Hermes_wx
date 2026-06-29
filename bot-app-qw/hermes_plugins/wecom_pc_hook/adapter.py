@@ -106,6 +106,29 @@ SUPPRESSED_OUTBOUND_SUBSTRINGS = (
     "Type /sethome to make this chat your home channel",
     "No available channel for model",
 )
+SUPPRESSED_OUTBOUND_PROGRESS_PATTERNS = (
+    re.compile(r"(?is)^working\b.*\biteration\s+\d+/\d+\b"),
+    re.compile(r"(?is)\breceiving stream response\b"),
+    re.compile(r"(?is)已尝试解决此问题"),
+    re.compile(r"(?is)目前处于第\s*\d+\s*次迭代"),
+)
+SUPPRESSED_OUTBOUND_PROGRESS_MARKERS = (
+    "working -",
+    "iteration ",
+    "receiving stream response",
+    "input tokens",
+    "output tokens",
+    "context window",
+    "progress summary",
+    "extract_summary.json",
+    "markdown:",
+    "bytes",
+    "输入令牌",
+    "输出令牌",
+    "已完成步骤",
+    "上下文压缩",
+    "迭代",
+)
 
 
 @dataclass
@@ -1648,7 +1671,16 @@ def _should_suppress_outbound_text(text: str) -> bool:
         return True
     if any(normalized.startswith(prefix) for prefix in SUPPRESSED_OUTBOUND_PREFIXES):
         return True
-    return any(snippet in normalized for snippet in SUPPRESSED_OUTBOUND_SUBSTRINGS)
+    if any(snippet in normalized for snippet in SUPPRESSED_OUTBOUND_SUBSTRINGS):
+        return True
+    if any(pattern.search(normalized) for pattern in SUPPRESSED_OUTBOUND_PROGRESS_PATTERNS):
+        return True
+    progress_hits = sum(1 for marker in SUPPRESSED_OUTBOUND_PROGRESS_MARKERS if marker in normalized.lower())
+    if progress_hits >= 2:
+        return True
+    if progress_hits >= 1 and "\n" in normalized and len(normalized) >= 80:
+        return True
+    return False
 
 
 def _dump_payload(payload: dict[str, Any]) -> str:
@@ -2618,7 +2650,8 @@ def register(ctx) -> None:
         pii_safe=False,
         emoji="WX",
         platform_hint=(
-            "You are chatting through Enterprise WeChat PC Hook. "
-            "Use plain text and keep replies concise."
+            "You are assisting a user in Enterprise WeChat. "
+            "Act like a document-focused assistant, avoid mentioning implementation details or device type, "
+            "use plain text, and keep replies concise."
         ),
     )
